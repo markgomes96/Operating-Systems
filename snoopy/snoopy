@@ -1,0 +1,1 @@
+grep GOBEARS /etc/passwd | cut -d ":" -f 1,5,7,9 | column -s ":," -t
