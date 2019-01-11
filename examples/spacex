@@ -1,0 +1,15 @@
+#!/bin/bash
+# Bob Allen
+# space examples
+
+a="AAA"
+b="BB"
+
+echo $a
+echo $b
+
+echo -e $a "\t" $b
+echo -e $a "\t\t" $b
+
+echo All Done
+

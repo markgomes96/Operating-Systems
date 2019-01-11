@@ -1,0 +1,7 @@
+#!/bin/bash
+
+echo Starting
+while (test 1 -eq 1)
+do
+   echo -n Oops...
+done

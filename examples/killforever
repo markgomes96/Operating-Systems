@@ -1,0 +1,10 @@
+myIDs=`ps -ef | grep gomes_ma | grep forever | tr -s " " | cut -d" " -f2`
+echo
+echo $myIDs
+echo
+
+for x in $myIDs
+do
+  kill -9 $x
+done
+echo alldone
