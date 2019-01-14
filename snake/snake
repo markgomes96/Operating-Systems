@@ -1,0 +1,15 @@
+#!/bin/sh
+
+list=`who | cut -d " " -f 1 | sort -u`
+
+for user in $list
+do
+  name=`grep $user /etc/passwd | cut -d ":" -f 5 | cut -d "," -f 1`
+  phone=`grep $user /etc/passwd | cut -d ":" -f 5 | cut -d "," -f 3`
+  tty=`who | grep $user | tr -s " " | cut -d " " -f 2` 
+  what=`w | grep $user | cut -c 65-`
+
+  echo $user $name $phone $tty $what
+done
+
+#grep GOBEARS /etc/passwd | cut -d ":" -f 1,5,7,9 | column -s ":," -t
