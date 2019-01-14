@@ -1,0 +1,9 @@
+list=`who | cut -d " " -f 1 | sort -u`
+
+for user in $list
+do
+  name=`grep $user /etc/passwd | cut -d ":" -f 5 | cut -d "," -f 1`
+  what=`w | grep $user | cut -c 65-`
+
+  echo $name $what
+done
