@@ -1,15 +1,42 @@
 #!/bin/sh
 
-list=`who | cut -d " " -f 1 | sort -u`
+#Mark Gomes
+#CSC 460 - Dr. Allen
+#Program to view user information
 
-for user in $list
+#check command line arguments
+if (test $# -eq 0) then			#snake
+    list=`who | cut -d " " -f 1 | sort -u`
+else					
+    if (test "$1" = "all") then		#snake all
+        list=`grep GOBEARS /etc/passwd | cut -d ":" -f 1 | sort -u`
+    else					#snake [usernames...]
+        list=$*
+    fi
+fi
+
+echo "USERNAME|NAME|PHONE|TTY|WHAT" >> dump
+for user in $list	#iterate through all users and find relevent info
 do
-  name=`grep $user /etc/passwd | cut -d ":" -f 5 | cut -d "," -f 1`
-  phone=`grep $user /etc/passwd | cut -d ":" -f 5 | cut -d "," -f 3`
-  tty=`who | grep $user | tr -s " " | cut -d " " -f 2` 
-  what=`w | grep $user | cut -c 65-`
+    name=`grep $user /etc/passwd | cut -d ":" -f 5 | cut -d "," -f 1 | sort -u`
+    phone=`grep $user /etc/passwd | cut -d ":" -f 5 | cut -d "," -f 3 | sort -u`
+    tty=`who | grep $user | tr -s " " | cut -d " " -f 2 | tr -d '\n'` 
+    what=`w | grep $user | cut -c 65- | sort -u`
 
-  echo $user $name $phone $tty $what
+    if (test "$tty" = "") then		#checks if users are no logged in
+        tty="NOT ON"
+    fi
+
+    if (test "$what" = "") then 
+       what="---"
+    fi
+
+    
+
+    data="$user|$name|$phone|$tty|$what"
+    echo "$data" >> dump
 done
 
-#grep GOBEARS /etc/passwd | cut -d ":" -f 1,5,7,9 | column -s ":," -t
+eval 'column -t -s "|" dump'	#run column command to display info
+
+eval 'rm dump'		#remove file used to store info
