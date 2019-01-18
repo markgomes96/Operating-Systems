@@ -1,0 +1,20 @@
+#!/bin/sh
+
+#Mark Gomes
+#CSC 460 - Dr. Allen
+#Program to emulate a shell
+
+cmd='---'
+while (test "$cmd" != "peeloff")
+do
+    echo -n "Peaches> "		#display command prompt
+    read cmd			#read in user command
+
+    if (test "$cmd" = "cream") then		#[cream] command
+        echo "*** Files In Current Directory  ***"
+        for filename in ./*
+        do
+            echo -e "\t$filename"
+        done
+    fi
+done
