@@ -4,17 +4,106 @@
 #CSC 460 - Dr. Allen
 #Program to emulate a shell
 
-cmd='---'
 while (test "$cmd" != "peeloff")
 do
     echo -n "Peaches> "		#display command prompt
-    read cmd			#read in user command
+    read cmd arg1 arg2 arg3	#read in user command
+    cf=0
+
+    if (test "$cmd" = "peachcobbler") then	#[peachcobbler] command
+        echo "*** Displaying File $arg1 ***"
+        eval "less $arg1"
+        cf=1
+    fi
+
+    if (test "$cmd" = "peachpal") then
+        #get user info
+        name=`grep $arg1 /etc/passwd | cut -d ":" -f 5 | cut -d "," -f 1`
+        phone=`grep $arg1 /etc/passwd | cut -d ":" -f 5 | cut -d "," -f 3`
+        
+        echo "*** User $arg1 Info ***"	  #print user info
+        echo -e "\t Name : $name"
+        echo -e "\t Phone Num : $phone"
+        cf=1
+    fi
+
+    if (test "$cmd" = "peachers") then		#[peachers] command
+        #get users logged on
+        list=`who | cut -d " " -f 1 | sort -u`
+        echo "*** Users Logged On ***"
+        for user in $list
+        do
+            name=`grep $user /etc/passwd | cut -d ":" -f 5 | cut -d "," -f 1`
+            echo -e "\t$name"
+        done
+        cf=1
+    fi
 
     if (test "$cmd" = "cream") then		#[cream] command
         echo "*** Files In Current Directory  ***"
-        for filename in ./*
+        for filename in ./*	#iterate through all files in curr dir
         do
             echo -e "\t$filename"
         done
+        cf=1
+    fi
+
+    if (test "$cmd" = "peachfuzz") then		#[peachfuzz] command
+        echo "*** Peach Command List ***"
+        echo -e "\t peachcobbler [filename] \n \t peachpal [userid] \n \t peachers"
+        echo -e "\t cream \n \t peachfuzz \n \t peachy"
+        echo -e "\t peachpie [filename] \n \t snake [all] [userid...]"
+        cf=1
+    fi
+
+    if (test "$cmd" = "peachsmash") then	#[peachsmash] command
+        echo "*** Escaping to the Bash : Good Luck! ***"
+        #recreate bash command prompt
+        user=`who -m | cut -d " " -f 1`
+        dir=`pwd | rev | cut -d "/" -f 1 | rev`
+        prompt="[$user@assemble $dir]$ "
+
+        echo -n "$prompt "	#emulate "real" bash
+        read cmd
+        while (test "$cmd" != "exit")
+        do
+            $cmd
+            echo -n "$prompt "
+            read cmd
+        done
+        cf=1
+    fi
+
+    if (test "$cmd" = "peachy") then
+        echo "*** Lets Get Peachy ;) ***"
+        count=0
+        while [ $count -le 3 ]		#draw some peaches
+        do
+            echo -e " ,(.  \n(   )\n ''' "
+            count=$(($count + 1))
+            sleep 1
+        done
+
+        eval "snake all | rev"	      #print snake stuff in reverse
+        cf=1
+    fi
+
+    if (test "$cmd" = "peachpie") then	     #[peachpie] command
+        echo "*** Opening File $arg1 With Editor ***"
+        eval "vim $arg1"
+        cf=1
+    fi
+
+    if (test "$cmd" = "snake") then	    #[snake] command
+        echo "*** Running [snake] Program ***"
+        eval "$cmd $arg1 $arg2 $arg3"
+        cf=1
+    fi
+
+    if (test $cf -eq 0) then
+        if (test "$cmd" != "peeloff") then
+            echo "*** You Fuzzed Up : Enter Peach Command Please ***"
+            echo "Try [peachfuzz] if your memory is fuzzy..."
+        fi
     fi
 done

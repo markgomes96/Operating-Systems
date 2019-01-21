@@ -1,0 +1,42 @@
+#!/bin/sh
+
+#Mark Gomes
+#CSC 460 - Dr. Allen
+#Program to view user information
+
+#check command line arguments
+if (test $# -eq 0) then			#snake
+    list=`who | cut -d " " -f 1 | sort -u`
+else					
+    if (test "$1" = "all") then		#snake all
+        list=`grep GOBEARS /etc/passwd | cut -d ":" -f 1 | sort -u`
+    else					#snake [usernames...]
+        list=$*
+    fi
+fi
+
+echo "USERNAME|NAME|PHONE|TTY|WHAT" >> dump
+for user in $list	#iterate through all users and find relevent info
+do
+    name=`grep $user /etc/passwd | cut -d ":" -f 5 | cut -d "," -f 1 | sort -u`
+    phone=`grep $user /etc/passwd | cut -d ":" -f 5 | cut -d "," -f 3 | sort -u`
+    tty=`who | grep $user | tr -s " " | cut -d " " -f 2 | tr -d '\n'` 
+    what=`w | grep $user | cut -c 65- | sort -u`
+
+    if (test "$tty" = "") then		#checks if users are no logged in
+        tty="NOT ON"
+    fi
+
+    if (test "$what" = "") then 
+       what="---"
+    fi
+
+    
+
+    data="$user|$name|$phone|$tty|$what"
+    echo "$data" >> dump
+done
+
+eval 'column -t -s "|" dump'	#run column command to display info
+
+eval 'rm dump'		#remove file used to store info
