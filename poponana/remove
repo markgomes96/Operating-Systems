@@ -1,0 +1,15 @@
+#!/bin/bash
+echo removing shared memory
+myids=`ipcs | grep gomes | cut -d " " -f 2`
+
+echo
+echo $myids
+echo
+
+for id in $myids
+do
+	ipcrm -m $id
+done
+
+echo all done
+echo
