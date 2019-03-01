@@ -49,7 +49,7 @@ void runSim(int shmid, int id)
 		for(i = 0; i < id; i++)	// tab to id column
 			printf("\t");
 		printf("%d : THINKING\n", id);
-		while(count < 50000)		// eat up cpu cycles
+		while(count < 10000000)		// eat up cpu cycles
 			count++;
 		count = 0;		
 	
@@ -62,6 +62,11 @@ void runSim(int shmid, int id)
 		{
 			sem->chopsticks[left] = id; 	// pick up left chopstick
 		}
+
+		while(count < 10000000)
+			count++;
+		count = 0;
+
 		if(sem->chopsticks[right] == -1)
 		{
 			sem->chopsticks[right] = id;	// pick up right chopstick
@@ -73,7 +78,7 @@ void runSim(int shmid, int id)
 			for(i = 0; i < id; i++)	// tab to id column
 				printf("\t");
 			printf("%d : EATING\n", id);
-			while(count < 50000)		// eat up cpu cycles
+			while(count < 10000000)		// eat up cpu cycles
 				count++;
 			count = 0;
 

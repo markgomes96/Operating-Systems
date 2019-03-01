@@ -1,15 +1,6 @@
 #!/bin/bash
 
-pids=`ps -ef | tr -s " " | grep gomes | cut -d " " -f 2`
-echo
-echo $pids
-echo
-
-for pid in $pids
-do
-  kill -9 $pid
-done
-echo All process have been terminated
+# Clean up shared memory
 
 shmids=`ipcs | grep gomes | tr -s " " | cut -d " " -f2`
 echo
@@ -21,3 +12,16 @@ do
   ipcrm -m $shmid
 done
 echo All shared memory has been absolved
+
+# Terminate processes
+
+pids=`ps -ef | tr -s " " | grep gomes | cut -d " " -f 2`
+echo
+echo $pids
+echo
+
+for pid in $pids
+do
+  kill -9 $pid
+done
+echo All process have been terminated
