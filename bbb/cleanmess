@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# Clean up shared memory
+
+shmids=`ipcs | grep gomes | tr -s " " | cut -d " " -f2`
+echo
+echo $shmids
+echo
+
+for shmid in $shmids
+do
+  ipcrm -m $shmid
+  ipcrm -s $shmid
+done
+echo All shared memory has been absolved
+
+rm share.txt
+rm a.out
