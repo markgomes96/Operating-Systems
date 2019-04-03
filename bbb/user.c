@@ -54,6 +54,7 @@ typedef struct global
 
 void p(int s, int sem_id);	// Wait
 void v(int s, int sem_id);	// Signal
+void jobcopy(job *a, job *b)	// copies b into a
 
 int main(int argc, char** argv)
 {
@@ -98,6 +99,8 @@ int main(int argc, char** argv)
 	job* jobs = (job*) shmat(jobshm, NULL, SHM_RND);
 	global* globs = (global*) shmat(globshm, NULL, SHM_RND);
 	
+	job *temp;
+
 	if(jobnum == 0)	   // check for the kill command
 	{
 		globs->killswitch = 1;
@@ -109,7 +112,7 @@ int main(int argc, char** argv)
 	}
 	else
 	{
-		int i, think, pid, cputime, start;
+		int i, j, think, pid, cputime, start, jobind;
 
 		for(i = 0; i < N; i++)
 		{
@@ -122,9 +125,17 @@ int main(int argc, char** argv)
 			pid = getpid() + i;
 			cputime = rand() % 5 + 1;  // rand cputime 1-5
 			start = *st;
-			job temp = job(pid, cputime, start, -1);
+			*temp = job(pid, cputime, start, -1);
 			
+			p(EMPTY, jobsem);	// check if queue spot is availiable
+			p(MUTEX, jobsem);	// mutex
+		
+			jobind = glob->jobnum;
+			jobcopy(&jobs[jobind], temp);
+			glob->jobnum = jobind + 1;
 			
+			p(MUTEX, jobsem);	// mutex
+			P(FULL, jobsem);	// signal cpu
 		}
 	}
 }
@@ -149,4 +160,13 @@ void v(int s, int sem_id)	// Signal
 	sops.sem_flg = 0;
 	if((semop(sem_id, &sops, 1)) == -1)
 		printf("%s", "'V' error\n");
+}
+
+void jobcopy(job *a, job *b)	// copies b into a
+{
+	a->pid = b->pid;
+	a->cputime = b->cputime;
+	a->timeslice = b->timeslice;
+	a->start = b->start;
+	a->end = b->end;
 }

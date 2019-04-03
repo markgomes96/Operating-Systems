@@ -109,11 +109,12 @@ void dispatch(/*int jobsem, int jobshm*/)
 	job *temp;
 	int i;
 
-	while(globs->killswitch != 1)	// run until kill swithc is activated
+	while(globs->killswitch != 1)	// run until kill switch is activated
 	{
 		// wait for cpu to execute a time slice
-		p(5, jobsem);
-		p(MUTEX, jobsem);	// block user access
+		p(GREEN, jobsem);	// wait for completed jobs to be read
+		p(DPR, jobsem);		// wait for dispatcher signal
+		p(MUTEX, jobsem);	// mutex
 
 		// cycle the queue
 		jobcopy(temp, &jobs[0]);
@@ -122,25 +123,19 @@ void dispatch(/*int jobsem, int jobshm*/)
 			jobcopy(&jobs[i], &jobs[i+1]);
 		}
 
-		// drop completed jobs
 		if(temp.N != 0)
 		{
 			// place unfinished jobs at back of job queue
 			jobs[globs->jobnum-1] = temp;
 		}
-		else	// free sem for open queue space
+		else	// free resource in sem EMPTY
 		{
-			/*record info for completed job
-			 *set end time
-			 *mabye send signal to user to read completed job in job[0]***
-			*/
-
-			v(globs->jobnum-1, jobsem);
+			v(EMPTY, jobsem);
 		}
 
-		// signal to the CPU
-		v(0, jobsem);
-		v(MUTEX, jobsem);	// allow user access
+		v(MUTEX, jobsem);       // exit mutex
+		v(CPU, jobsem);		// signal CPU
+		v(GREEN, jobsem);	// reset read completed jobs
 	}
 
 	v(FIN, jobsem);   // signal piece of clean up
@@ -161,9 +156,15 @@ void simCPU(int ts/*int jobsem, int jobshm*/)
 	while(globs->killswitch != 1)	// run until kill switch is activated
 	{
 		// check job queue for next job
-		p(0, jobsem);		// wait for signal from user
+		p(CPU, jobsem);		// wait for CPU signal
+		p(FULL, jobsem);	// wait for jobs in queue
+		p(MUTEX, jobsem);	// mutex
+
 		N = jobs[0].cputime;
 		pid = jobs[0].pid;
+
+		v(MUTEX, jobsem);	// exit mutex
+
 		// confirm request
 		printf("\t\tCPU RECIEVES request for %d from %d \n", N, pid);
 		// execute N cputime
@@ -176,16 +177,24 @@ void simCPU(int ts/*int jobsem, int jobshm*/)
 		timer = *st + timeslice;
 		while(*st < timer)
 		{/*execute cpu time*/}
-		jobs[0].end = *st;
 
-		jobs[0].N = jobs[0].N - timeslice;
+		p(MUTEX, jobsem);	// mutex
+
+		jobs[0].end = *st;
+		jobs[0].cputime = jobs[0].cputime - timeslice;
+		N = job[0].cputime;
+
+		v(MUTEX, jobsem);	// exit mutex
+
 		// confirm job completion
-		if(jobs[0].N == 0)
+		if(N == 0)
 		{
 			printf("\t\tCPU FINISHED request for %d from %d \n", N, pid);
+			v(GREEN, jobsem);	// cause dispatcher to wait
+			p(RED, jobsem);		// signal for complete read
 		}
-		// signal to dispatcher job is complete
-		v(5, jobsem);
+
+		v(DPR, jobsem);		// signal dispatcher
 	}
 
 	v(FIN, jobsem);   // signal piece of clean up
@@ -251,7 +260,7 @@ void setupSystem(int timeslice/*int *jobsem, int *timeshm, int *jobshm*/)
         }
 
 	// ask OS for semaphores
-	jobsem = semget( IPC_PRIVATE, 5, 0777);
+	jobsem = semget( IPC_PRIVATE, 8, 0777);
 	
 	// see if request is accepted
 	if(jobsem == -1)
@@ -262,12 +271,12 @@ void setupSystem(int timeslice/*int *jobsem, int *timeshm, int *jobshm*/)
 	}
 
 	// initialize your sems
-	semctl(jobsem, CPU, SETVAL, 0);		// CPU signaler
-	//semctl(jobsem, 1, SETVAL, 1);
-	//semctl(jobsem, 2, SETVAL, 0);
-        semctl(jobsem, EMPTY, SETVAL, 0);	// user signalers
+	semctl(jobsem, CPU, SETVAL, 1);		// CPU signaler
+	semctl(jobsem, DPR, SETVAL, 0);         // Dispatcher signaler
+        semctl(jobsem, EMPTY, SETVAL, 5);	// bounded buffer signalers
 	semctl(jobsem, FULL, SETVAL, 0);
-	semctl(jobsem, DPR, SETVAL, 0);		// Dispatcher signaler
+	semctl(jobsem, GREEN, SETVAL, 1);       // completed job signalers
+        semctl(jobsem, RED, SETVAL, 0);
 	semctl(jobsem, FIN, SETVAL, 0);		// clean up signaler
 	semctl(jobsem, MUTEX, SETVAL, 1);	// mutex
 	
