@@ -100,6 +100,7 @@ int main(int argc, char** argv)
 	global* globs = (global*) shmat(globshm, NULL, SHM_RND);
 	
 	job *temp;
+	int totaltt = 0;
 
 	if(jobnum == 0)	   // check for the kill command
 	{
@@ -109,10 +110,12 @@ int main(int argc, char** argv)
 		p(FIN, jobsem);
 		p(FIN, jobsem);
 		system("./cleanmess");
+		printf("System is Shutting Down...\n\n");
 	}
 	else
 	{
 		int i, j, think, pid, cputime, start, jobind;
+		int compid, comstart, comend, tt = 0;
 
 		for(i = 0; i < N; i++)
 		{
@@ -130,13 +133,30 @@ int main(int argc, char** argv)
 			p(EMPTY, jobsem);	// check if queue spot is availiable
 			p(MUTEX, jobsem);	// mutex
 		
+			// put job in next avaiable queue spot
 			jobind = glob->jobnum;
+			// check if job is completed
+			if(jobs[jobind] != -1)
+			{
+				// record completed job stats
+				compid = jobs[jobind].pid;
+				comstart = jobs[jobind].start;
+				comend = jobs[jobind].end;
+
+				// print out turnaround time
+				tt = comend - comstart;
+				printf("\tPID %d FINISHED in %d", compid, tt);
+			}
 			jobcopy(&jobs[jobind], temp);
-			glob->jobnum = jobind + 1;
+			glob->jobnum = jobind + 1;	// increment job count
 			
-			p(MUTEX, jobsem);	// mutex
-			P(FULL, jobsem);	// signal cpu
+			v(MUTEX, jobsem);	// exit mutex
+			v(FULL, jobsem);	// signal jobs in queue
 		}
+
+		float avett = (float)totaltt / (float)jobnum;
+		printf("\tPID %d is logging off with Average Turnaround Time = %2.3f \n\n",
+			 getpid(), avett);
 	}
 }
 
