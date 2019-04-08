@@ -145,8 +145,9 @@ int main(int argc, char** argv)
 			{
 				p(JCALL, jobsem);  // wait for cpu signal
 				printf("\tuser : recieved JCALL signal\n");
-				if(jobs[0].pid == pid)
-				{
+
+				//if(jobs[0].pid == pid)
+				//{
 					// record completed job stats
 					compid = jobs[jobind].pid;
 					comstart = jobs[jobind].start;
@@ -156,15 +157,15 @@ int main(int argc, char** argv)
 					tt = comend - comstart;
 					printf("\tPID %d FINISHED in %d", compid, tt);
 
-					p(FULL, jobsem);
 					v(JREPS, jobsem);  // signal cpu to continue
 					printf("\tuser : signal JREPS\n");
-					break;  // break out of loop
-				}
-				else
-				{
-					printf("\tuser : pids dont match\n");
-				}
+					//break;  // break out of loop
+				//}
+				//else
+				//{
+					printf("\tuser : pids dont match %d %d\n", jobs[0].pid, getpid());
+					break;
+				//}
 			}
 		}
 
