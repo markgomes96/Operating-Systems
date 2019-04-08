@@ -1,0 +1,4 @@
+rm bbb
+rm user
+gcc bbb.c -o bbb
+gcc user.c -o user

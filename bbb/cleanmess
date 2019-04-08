@@ -2,6 +2,32 @@
 
 # Clean up shared memory
 
+# Terminate processes
+
+pids=`ps -ef | tr -s " " | grep gomes | grep user | cut -d " " -f 2`
+echo
+echo $pids
+echo
+
+for pid in $pids
+do
+  kill -9 $pid
+done
+echo user process have been terminated
+
+pids=`ps -ef | tr -s " " | grep gomes | grep bbb | cut -d " " -f 2`
+echo
+echo $pids
+echo
+
+for pid in $pids
+do
+  kill -9 $pid
+done
+echo bbb process have been terminated
+
+
+
 shmids=`ipcs | grep gomes | tr -s " " | cut -d " " -f2`
 echo
 echo $shmids
@@ -15,4 +41,3 @@ done
 echo All shared memory has been absolved
 
 rm share.txt
-rm a.out

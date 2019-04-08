@@ -13,6 +13,14 @@
 #include <time.h>
 
 typedef enum{ false, true } bool;
+#define CPU 0
+#define DPR 1
+#define EMPTY 2
+#define FULL 3
+#define FIN 4
+#define MUTEX 5
+#define JCALL 6
+#define JREPS 7
 
 typedef struct job
 {
@@ -20,22 +28,6 @@ typedef struct job
 	int cputime;
 	int start;
 	int end;
-
-	job()
-	{
-		pid = -1;
-		cputime = -1;
-		start = -1;
-		end = -1;
-	}
-
-	job(int _pid, int _cputime, int start, int end)
-	{
-		pid = _pid;
-		cputime = _cputime;
-		start = _start;
-		end = _end;
-	}
 } job;
 
 typedef struct global
@@ -43,28 +35,23 @@ typedef struct global
 	int timeslice;
 	int jobnum;
 	int killswitch;
-
-	global()
-	{
-		timeslice = 1;
-		jobnum = 0;
-		killswitch = 0;	// 1 -> kill switch
-	}
-} globals;
+	int subjobs;
+} global;
 
 void p(int s, int sem_id);	// Wait
 void v(int s, int sem_id);	// Signal
-void jobcopy(job *a, job *b)	// copies b into a
+void jobcopy(job *a, job *b);	// copies b into a
 
 int main(int argc, char** argv)
 {
+	srand(time(NULL));	// create random seed based on time
 	// check arguments
 	if(argc < 2)
 	{
 		printf("Error : Not enough arguments\n\n");
                 exit(0);
 	}
-	int jobnum = stoi(argv[1]);
+	int jobnum = atoi(argv[1]);
 	if(jobnum < 0 || jobnum > 50)
 	{
 		printf("Error : Range of jobs is not within 0 - 50\n\n");
@@ -83,15 +70,17 @@ int main(int argc, char** argv)
         }
 
 	// read in lines
-	char* line;
-	getline(&line, fp);
-	jobsem = stoi(line);
-	getline(&line, fp);
-        timeshm = stoi(line);
-	getline(&line, fp);
-        jobshm = stoi(line);
-	getline(&line, fp);
-        globshm = stoi(line);
+	char buffer[32];
+	char *b = buffer;
+	size_t buffsize = 32;
+	getline(&b, &buffsize, fp);
+	jobsem = atoi(b);
+	getline(&b, &buffsize, fp);
+        timeshm = atoi(b);
+	getline(&b, &buffsize, fp);
+        jobshm = atoi(b);
+	getline(&b, &buffsize, fp);
+        globshm = atoi(b);
 	fclose(fp);
 
 	// attach to shared memory
@@ -99,64 +88,90 @@ int main(int argc, char** argv)
 	job* jobs = (job*) shmat(jobshm, NULL, SHM_RND);
 	global* globs = (global*) shmat(globshm, NULL, SHM_RND);
 	
-	job *temp;
 	int totaltt = 0;
+	job j;
+	job *temp = &j;
 
 	if(jobnum == 0)	   // check for the kill command
 	{
 		globs->killswitch = 1;
-		// clean up everything
-		p(FIN, jobsem);  // wait for system to shutdown
-		p(FIN, jobsem);
-		p(FIN, jobsem);
-		system("./cleanmess");
-		printf("System is Shutting Down...\n\n");
 	}
 	else
 	{
-		int i, j, think, pid, cputime, start, jobind;
-		int compid, comstart, comend, tt = 0;
+		//subscribe job to system
+		globs->subjobs++;
 
-		for(i = 0; i < N; i++)
+		int i, j, think, pid, cputime, start, jobind;
+		int compid, comstart, comend, tt = 0, timer = 0;
+
+		for(i = 0; i < jobnum; i++)
 		{
 			// think for rand(2-10)
 			think = rand() % 9 + 2;
 			printf("\tPID is thinking %d seconds\n", think);
-			sleep(think);
+
+			timer = *st + think;  // sleep for think seconds
+                	while(*st < timer)
+                	{/**/}
 	
+			p(EMPTY, jobsem);	// check if queue spot is available
+			printf("\tuser : got EMPTY signal\n");
+			p(MUTEX, jobsem);	// mutex
+			printf("\tuser : enter mutex\n");
+
 			// submit generated job
-			pid = getpid() + i;
+			pid = getpid();
 			cputime = rand() % 5 + 1;  // rand cputime 1-5
 			start = *st;
-			*temp = job(pid, cputime, start, -1);
-			
-			p(EMPTY, jobsem);	// check if queue spot is availiable
-			p(MUTEX, jobsem);	// mutex
+			temp->pid = pid;
+			temp->cputime = cputime;
+			temp->start = start;
+			temp->end = -1;
 		
 			// put job in next avaiable queue spot
-			jobind = glob->jobnum;
-			// check if job is completed
-			if(jobs[jobind] != -1)
-			{
-				// record completed job stats
-				compid = jobs[jobind].pid;
-				comstart = jobs[jobind].start;
-				comend = jobs[jobind].end;
-
-				// print out turnaround time
-				tt = comend - comstart;
-				printf("\tPID %d FINISHED in %d", compid, tt);
-			}
+			jobind = globs->jobnum;
 			jobcopy(&jobs[jobind], temp);
-			glob->jobnum = jobind + 1;	// increment job count
+			globs->jobnum = jobind + 1;     // increment job count
+		
+			printf("\tsubmited job\n");
 			
-			v(MUTEX, jobsem);	// exit mutex
-			v(FULL, jobsem);	// signal jobs in queue
+			v(MUTEX, jobsem);       // exit mutex
+			printf("\tuser : exit mutex\n");
+                        v(FULL, jobsem);        // signal jobs in queue
+			printf("\tuser : signal FULL\n");
+
+			// wait until job is complete
+			while(1)
+			{
+				p(JCALL, jobsem);  // wait for cpu signal
+				printf("\tuser : recieved JCALL signal\n");
+				if(jobs[0].pid == pid)
+				{
+					// record completed job stats
+					compid = jobs[jobind].pid;
+					comstart = jobs[jobind].start;
+					comend = jobs[jobind].end;
+
+					// print out turnaround time
+					tt = comend - comstart;
+					printf("\tPID %d FINISHED in %d", compid, tt);
+
+					p(FULL, jobsem);
+					v(JREPS, jobsem);  // signal cpu to continue
+					printf("\tuser : signal JREPS\n");
+					break;  // break out of loop
+				}
+				else
+				{
+					printf("\tuser : pids dont match\n");
+				}
+			}
 		}
 
 		float avett = (float)totaltt / (float)jobnum;
 		printf("\tPID %d is logging off with Average Turnaround Time = %2.3f \n\n",
 			 getpid(), avett);
+		globs->subjobs--;
 	}
 }
 
@@ -186,7 +201,6 @@ void jobcopy(job *a, job *b)	// copies b into a
 {
 	a->pid = b->pid;
 	a->cputime = b->cputime;
-	a->timeslice = b->timeslice;
 	a->start = b->start;
 	a->end = b->end;
 }

@@ -13,6 +13,14 @@
 #include <time.h>
 
 typedef enum{ false, true } bool;
+#define CPU 0
+#define DPR 1
+#define EMPTY 2
+#define FULL 3
+#define FIN 4
+#define MUTEX 5
+#define JCALL 6
+#define JREPS 7
 
 typedef struct job
 {
@@ -20,22 +28,6 @@ typedef struct job
 	int cputime;
 	int start;	// seconds
 	int end;
-
-	job()
-	{
-		pid = -1;
-		cputime = -1;
-		start = -1;
-		end = -1;
-	}
-
-	job(int _pid, int _cputime, int start, int end)
-	{
-		pid = _pid;
-		cputime = _cputime;
-		start = _start;
-		end = _end;
-	}
 } job;
 
 typedef struct global
@@ -43,31 +35,24 @@ typedef struct global
 	int timeslice;
 	int jobnum;
 	int killswitch;
+	int subjobs;
+} global;
 
-	global()
-	{
-		timeslice = 1;
-		jobnum = 0;
-		killswitch = 0;	// 1 -> kill switch
-	}
-} globals;
-
-void dispatch(/*int jobsem, int jobshm*/);
-void simCPU(int ts/*int jobsem, int jobshm*/);
-void systemTime(/*int timeshm*/);
-void forkHelp(/*int *id*/);
-void setupSystem(/*int *jobsem, int *timeshm, int *jobshm*/);
+void dispatch();
+void simCPU(int ts);
+void systemTime();
+void forkHelp();
+void setupSystem();
 
 void p(int s, int sem_id);	// Wait
 void v(int s, int sem_id);	// Signal
-job jobcopy(job a);		// deep copy job
+void jobcopy(job *a, job *b);		// deep copy job
 
 int jobsem, timeshm, jobshm, globshm, id;
 
 int main(int argc, char** argv)
 {
 	srand(time(NULL)); 	// create random seed based on time
-	//int jobsem, timeshm, jobshm, id;
 	
 	// set up shared memory for system
         setupSystem(&jobsem, &timeshm, &jobshm);
@@ -75,45 +60,50 @@ int main(int argc, char** argv)
 	// store timeslice in global shm
 	int ts = 1;
 	if(argc > 1)
-		if(stoi(argv[1] > 0))
-			ts = argv[1];
+		if(atoi(argv[1]) > 0)
+			ts = atoi(argv[1]);
 
 	printf("Let the Simulation Begin!! \n\n");
 	// fork off helps to preform tasks based on id
-	forkHelp(/*&id*/);
+	forkHelp();
 	switch(id)
 	{
 		case 0:
-		dispatch(/*jobsem, jobshm*/);
-		break;
+			dispatch();
+			break;
 
 		case 1:
-		simCPU(ts/*jobsem, jobshm*/);
-		break;
+			simCPU(ts);
+			break;
 
 		case 2:
-		systemTime(/*timeshm*/);
-		break;
+			systemTime();
+			break;
 
 		default:
-		break;
+			break;
 	}
 }
 
-void dispatch(/*int jobsem, int jobshm*/)
+void dispatch()
 {
+	printf("Dispatcher is alive\n");
+
 	// pointers to shared memory
 	int* st = (int*) shmat(timeshm, NULL, SHM_RND);
 	job* jobs = (job*) shmat(jobshm, NULL, SHM_RND);
 	global* globs = (global*) shmat(globshm, NULL, SHM_RND);
-	job *temp;
+	job j;
+	job *temp = &j;
 	int i;
 
 	while(globs->killswitch != 1)	// run until kill switch is activated
 	{
 		// wait for cpu to execute a time slice
 		p(DPR, jobsem);		// wait for dispatcher signal
+		printf("***dp : received DPR signal\n");
 		p(MUTEX, jobsem);	// mutex
+		printf("***dp : enter mutex\n");
 
 		// cycle the queue
 		jobcopy(temp, &jobs[0]);
@@ -122,26 +112,28 @@ void dispatch(/*int jobsem, int jobshm*/)
 			jobcopy(&jobs[i], &jobs[i+1]);
 		}
 
-		if(temp.N != 0)
+		if(temp->cputime != 0)
 		{
 			// place unfinished jobs at back of job queue
-			jobs[globs->jobnum-1] = temp;
+			jobcopy(&jobs[globs->jobnum-1], temp);
 		}
 		else	// free resource in sem EMPTY
 		{
-			jobs[globs->jobnum-1] = temp;
+			jobcopy(&jobs[globs->jobnum-1], temp);
 			globs->jobnum = globs->jobnum - 1;  // decrement job count
 			v(EMPTY, jobsem);
 		}
 
 		v(MUTEX, jobsem);       // exit mutex
+		printf("dp : exit mutex\n");
 		v(CPU, jobsem);		// signal CPU
+		printf("dp : signal cpu\n");
 	}
 
 	v(FIN, jobsem);   // signal piece of clean up
 }
 
-void simCPU(int ts/*int jobsem, int jobshm*/)
+void simCPU(int ts)
 {
 	// pointers to shared memory
 	int* st = (int*) shmat(timeshm, NULL, SHM_RND);
@@ -157,13 +149,14 @@ void simCPU(int ts/*int jobsem, int jobshm*/)
 	{
 		// check job queue for next job
 		p(CPU, jobsem);		// wait for CPU signal
+		printf("cpu : got CPU signal\n");
 		p(FULL, jobsem);	// wait for jobs in queue
+		printf("cpu : got FULL signal\n");
 		p(MUTEX, jobsem);	// mutex
+		printf("cpu : enter mutex\n");
 
 		N = jobs[0].cputime;
 		pid = jobs[0].pid;
-
-		v(MUTEX, jobsem);	// exit mutex
 
 		// confirm request
 		printf("\t\tCPU RECIEVES request for %d from %d \n", N, pid);
@@ -178,28 +171,30 @@ void simCPU(int ts/*int jobsem, int jobshm*/)
 		while(*st < timer)
 		{/*execute cpu time*/}
 
-		p(MUTEX, jobsem);	// mutex
-
 		jobs[0].end = *st;
 		jobs[0].cputime = jobs[0].cputime - timeslice;
-		N = job[0].cputime;
+		N = jobs[0].cputime;
 
 		v(MUTEX, jobsem);	// exit mutex
+		printf("cpu : exit mutex\n");
 
 		// confirm job completion
 		if(N == 0)
 		{
 			printf("\t\tCPU FINISHED request for %d from %d \n", N, pid);
+			v(JCALL, jobsem);  // signal job process complete
+			p(JREPS, jobsem);  // wait for job reply
 		}
 
 		v(FULL, jobsem);	// reset full
 		v(DPR, jobsem);		// signal dispatcher
+		printf("cpu : signal DPR\n");
 	}
 
 	v(FIN, jobsem);   // signal piece of clean up
 }
 
-void systemTime(/*int timeshm*/)
+void systemTime()
 {
 	// pointers to shared memory
 	int* st = (int*) shmat(timeshm, NULL, SHM_RND);
@@ -223,10 +218,18 @@ void systemTime(/*int timeshm*/)
 		curr = clock() / CLOCKS_PER_SEC;
 	}
 
-	v(FIN, jobsem);	  // signal piece of clean up
+	// handle system clean up
+	p(FIN, jobsem);    // wait for cpu/dispatcher to stop
+	p(FIN, jobsem);	
+
+	while(globs->subjobs != 0)
+	{/*wait for sub jobs to chill*/}
+
+	system("./cleanmess");
+	printf("System is Shutting Down...\n\n");
 }
 
-void forkHelp(/*int *id*/)
+void forkHelp()
 {
 	int a = 0;
         int i;
@@ -247,7 +250,7 @@ void forkHelp(/*int *id*/)
         }
 }
 
-void setupSystem(int timeslice/*int *jobsem, int *timeshm, int *jobshm*/)
+void setupSystem(int timeslice)
 {
 	// open file to hold shared memory id
 	FILE *fopen(), *fp;
@@ -259,7 +262,7 @@ void setupSystem(int timeslice/*int *jobsem, int *timeshm, int *jobshm*/)
         }
 
 	// ask OS for semaphores
-	jobsem = semget( IPC_PRIVATE, 6, 0777);
+	jobsem = semget( IPC_PRIVATE, 8, 0777);
 	
 	// see if request is accepted
 	if(jobsem == -1)
@@ -276,6 +279,8 @@ void setupSystem(int timeslice/*int *jobsem, int *timeshm, int *jobshm*/)
 	semctl(jobsem, FULL, SETVAL, 0);
 	semctl(jobsem, FIN, SETVAL, 0);		// clean up signaler
 	semctl(jobsem, MUTEX, SETVAL, 1);	// mutex
+	semctl(jobsem, JCALL, SETVAL, 0);
+	semctl(jobsem, JREPS, SETVAL, 0);
 	
 	// set up shared memory for job buffer
 	jobshm = shmget(IPC_PRIVATE, 5*sizeof(struct job), 0777);
@@ -297,7 +302,7 @@ void setupSystem(int timeslice/*int *jobsem, int *timeshm, int *jobshm*/)
 
 	// set up shared memory for globals
 	globshm = shmget(IPC_PRIVATE, 5*sizeof(struct global), 0777);
-        if(globnshm == -1)
+        if(globshm == -1)
         {
                 printf("ERROR - can't get shared memory \n");
                 fclose(fp);
@@ -338,7 +343,6 @@ void jobcopy(job *a, job *b)	// copies b into a
 {
 	a->pid = b->pid;
 	a->cputime = b->cputime;
-	a->timeslice = b->timeslice;
 	a->start = b->start;
 	a->end = b->end;
 }
