@@ -10,6 +10,7 @@
 #include <sys/ipc.h>
 #include <sys/types.h>
 #include <sys/sem.h>
+#include <semaphore.h>
 #include <time.h>
 
 typedef enum{ false, true } bool;
@@ -91,89 +92,95 @@ int main(int argc, char** argv)
 	int totaltt = 0;
 	job j;
 	job *temp = &j;
+	job finjob;
+	job *fj = &finjob;
 
 	if(jobnum == 0)	   // check for the kill command
 	{
 		globs->killswitch = 1;
+		exit(0);
 	}
-	else
-	{
-		//subscribe job to system
-		globs->subjobs++;
-
-		int i, j, think, pid, cputime, start, jobind;
-		int compid, comstart, comend, tt = 0, timer = 0;
-
-		for(i = 0; i < jobnum; i++)
-		{
-			// think for rand(2-10)
-			think = rand() % 9 + 2;
-			printf("\tPID is thinking %d seconds\n", think);
-
-			timer = *st + think;  // sleep for think seconds
-                	while(*st < timer)
-                	{/**/}
 	
-			p(EMPTY, jobsem);	// check if queue spot is available
-			printf("\tuser : got EMPTY signal\n");
-			p(MUTEX, jobsem);	// mutex
-			printf("\tuser : enter mutex\n");
+	//subscribe job to system
+	globs->subjobs++;
 
-			// submit generated job
-			pid = getpid();
-			cputime = rand() % 5 + 1;  // rand cputime 1-5
-			start = *st;
-			temp->pid = pid;
-			temp->cputime = cputime;
-			temp->start = start;
-			temp->end = -1;
+	int i, think, pid, cputime, start, jobind;
+	int compid, comstart, comend, tt = 0, timer = 0;
+
+	for(i = 0; i < jobnum; i++)
+	{
+		// think for rand(2-10)
+		think = rand() % 9 + 2;
+		printf("\tPID %d is thinking %d seconds\n", getpid(), think);
+
+		timer = *st + think;  // sleep for think seconds
+                while(*st < timer)
+                {/**/}
+	
+		p(EMPTY, jobsem);	// check if queue spot is available
+		//printf("\tuser : got EMPTY signal\n");
+		p(MUTEX, jobsem);	// mutex
+		//printf("\tuser : enter mutex\n");
+
+		// submit generated job
+		pid = getpid();
+		cputime = rand() % 5 + 1;  // rand cputime 1-5
+		start = *st;
+		temp->pid = pid;
+		temp->cputime = cputime;
+		temp->start = start;
+		temp->end = -1;
 		
-			// put job in next avaiable queue spot
-			jobind = globs->jobnum;
-			jobcopy(&jobs[jobind], temp);
-			globs->jobnum = jobind + 1;     // increment job count
+		// put job in next avaiable queue spot
+		jobind = globs->jobnum;
+		jobcopy(&jobs[jobind], temp);
+		globs->jobnum = jobind + 1;     // increment job count
 		
-			printf("\tsubmited job\n");
+		printf("\tPID %d REQUEST %d\n", pid, cputime);
 			
-			v(MUTEX, jobsem);       // exit mutex
-			printf("\tuser : exit mutex\n");
-                        v(FULL, jobsem);        // signal jobs in queue
-			printf("\tuser : signal FULL\n");
+		v(MUTEX, jobsem);       // exit mutex
+		//printf("\tuser : exit mutex\n");
+                v(FULL, jobsem);        // signal jobs in queue
+		//printf("\tuser : signal FULL\n");
 
-			// wait until job is complete
-			while(1)
-			{
-				p(JCALL, jobsem);  // wait for cpu signal
-				printf("\tuser : recieved JCALL signal\n");
+		// wait until job is complete
+		loop1:
 
-				//if(jobs[0].pid == pid)
-				//{
-					// record completed job stats
-					compid = jobs[jobind].pid;
-					comstart = jobs[jobind].start;
-					comend = jobs[jobind].end;
+		p(JCALL, jobsem);  // wait for cpu signal
+		//printf("\tuser : recieved JCALL signal\n");
 
-					// print out turnaround time
-					tt = comend - comstart;
-					printf("\tPID %d FINISHED in %d", compid, tt);
+		jobcopy(fj, &jobs[0]);
 
-					v(JREPS, jobsem);  // signal cpu to continue
-					printf("\tuser : signal JREPS\n");
-					//break;  // break out of loop
-				//}
-				//else
-				//{
-					printf("\tuser : pids dont match %d %d\n", jobs[0].pid, getpid());
-					break;
-				//}
-			}
+		if(fj->pid == pid)
+		{
+			// record completed job stats
+			compid = fj->pid;
+			comstart = fj->start;
+			comend = fj->end;
+
+			// print out turnaround time
+			tt = comend - comstart;
+			printf("\tPID %d FINISHED in %d\n", compid, tt);
+			totaltt += tt;
+
+			p(FULL, jobsem);
+			globs->subjobs--;
+			v(JREPS, jobsem);  // signal cpu to continue
+			//printf("\tuser : signal JREPS\n");
 		}
-
-		float avett = (float)totaltt / (float)jobnum;
-		printf("\tPID %d is logging off with Average Turnaround Time = %2.3f \n\n",
-			 getpid(), avett);
-		globs->subjobs--;
+		else
+		{
+			//printf("\tuser : pids dont match %d %d\n", fj->pid, getpid());
+			v(JCALL, jobsem);   // signal other user to see if job done
+			goto loop1;
+		}
+			
+		//***end of loop1
 	}
+
+	float avett = (float)totaltt / (float)jobnum;
+	printf("\tPID %d is logging off with Average Turnaround Time = %2.3f \n\n",
+		 getpid(), avett);
 }
 
 void p(int s, int sem_id)	// Wait

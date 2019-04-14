@@ -87,7 +87,7 @@ int main(int argc, char** argv)
 
 void dispatch()
 {
-	printf("Dispatcher is alive\n");
+	//printf("Dispatcher is alive\n");
 
 	// pointers to shared memory
 	int* st = (int*) shmat(timeshm, NULL, SHM_RND);
@@ -101,9 +101,9 @@ void dispatch()
 	{
 		// wait for cpu to execute a time slice
 		p(DPR, jobsem);		// wait for dispatcher signal
-		printf("***dp : received DPR signal\n");
+		//printf("***dp : received DPR signal\n");
 		p(MUTEX, jobsem);	// mutex
-		printf("***dp : enter mutex\n");
+		//printf("***dp : enter mutex\n");
 
 		// cycle the queue
 		jobcopy(temp, &jobs[0]);
@@ -125,12 +125,14 @@ void dispatch()
 		}
 
 		v(MUTEX, jobsem);       // exit mutex
-		printf("dp : exit mutex\n");
+		//printf("dp : exit mutex\n");
 		v(CPU, jobsem);		// signal CPU
-		printf("dp : signal cpu\n");
+		//printf("dp : signal cpu\n");
 	}
 
+	printf("dispatcher escape\n");
 	v(FIN, jobsem);   // signal piece of clean up
+	printf("dispatcher kill signal\n");
 }
 
 void simCPU(int ts)
@@ -149,11 +151,11 @@ void simCPU(int ts)
 	{
 		// check job queue for next job
 		p(CPU, jobsem);		// wait for CPU signal
-		printf("cpu : got CPU signal\n");
+		//printf("cpu : got CPU signal\n");
 		p(FULL, jobsem);	// wait for jobs in queue
-		printf("cpu : got FULL signal\n");
+		//printf("cpu : got FULL signal\n");
 		p(MUTEX, jobsem);	// mutex
-		printf("cpu : enter mutex\n");
+		//printf("cpu : enter mutex\n");
 
 		N = jobs[0].cputime;
 		pid = jobs[0].pid;
@@ -175,8 +177,9 @@ void simCPU(int ts)
 		jobs[0].cputime = jobs[0].cputime - timeslice;
 		N = jobs[0].cputime;
 
+		v(FULL, jobsem);        // reset full
 		v(MUTEX, jobsem);	// exit mutex
-		printf("cpu : exit mutex\n");
+		//printf("cpu : exit mutex\n");
 
 		// confirm job completion
 		if(N == 0)
@@ -186,12 +189,13 @@ void simCPU(int ts)
 			p(JREPS, jobsem);  // wait for job reply
 		}
 
-		v(FULL, jobsem);	// reset full
 		v(DPR, jobsem);		// signal dispatcher
-		printf("cpu : signal DPR\n");
+		//printf("cpu : signal DPR\n");
 	}
 
+	printf("cpu escape\n");
 	v(FIN, jobsem);   // signal piece of clean up
+	printf("cpu kill signal\n");
 }
 
 void systemTime()
@@ -201,32 +205,41 @@ void systemTime()
 	global* globs = (global*) shmat(globshm, NULL, SHM_RND);
 
 	// time -> miliseconds
-	clock_t start = clock() / CLOCKS_PER_SEC;
-	clock_t curr = start;
-	
-	*st = curr;
-	int count = 1;
+	clock_t start, stop;
+	float elapsedTime;
+	start = clock();
+
+	*st = 0;
+	float count = 1.0;
 	while(globs->killswitch != 1)      // run until kill switch is activated
 	{
 		// update time every second
-		if((curr - start) >= count * 1.0)
+		stop = clock();
+		elapsedTime = (float)(stop - start) / (float)CLOCKS_PER_SEC * 20.0;
+
+		if(elapsedTime >= count)
 		{
-			*st = count;	// convert to seconds
-			printf("system time : %d \n", count);
-			count++;
+			*st = (int)count;	// convert to seconds
+			printf("system time : %d \n", (int)count);
+			count = count + 1.0;
+			start = clock();
 		}
-		curr = clock() / CLOCKS_PER_SEC;
 	}
 
 	// handle system clean up
+	//printf("fire 0\n");
+	/*
 	p(FIN, jobsem);    // wait for cpu/dispatcher to stop
+	printf("fire 1\n");
 	p(FIN, jobsem);	
+	printf("fire 2\n");
+	*/
 
-	while(globs->subjobs != 0)
-	{/*wait for sub jobs to chill*/}
+	//while(globs->subjobs != 0)
+	//{/*wait for sub jobs to chill*/}
 
+	printf("\nSystem is Shuting Down...\n\n");
 	system("./cleanmess");
-	printf("System is Shutting Down...\n\n");
 }
 
 void forkHelp()
